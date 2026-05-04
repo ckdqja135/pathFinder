@@ -1,7 +1,8 @@
+import { conferencesSource } from "./conferences";
 import { seedSource } from "./seed";
 import type { CollectedEvent, EventSource } from "./types";
 
-const SOURCES: EventSource[] = [seedSource];
+const SOURCES: EventSource[] = [seedSource, conferencesSource];
 
 export interface CollectionResult {
   collected: CollectedEvent[];
