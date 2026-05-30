@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import type { CareerEvent } from "@/lib/types";
 import { useFilterStore } from "@/lib/store";
 import { useModalStore } from "@/lib/modalStore";
+import { useUIStore } from "@/lib/uiStore";
 import { CategoryFilter } from "@/components/sidebar/CategoryFilter";
 import { TypeFilter } from "@/components/sidebar/TypeFilter";
 import { UpcomingEvents } from "@/components/sidebar/UpcomingEvents";
@@ -17,6 +18,15 @@ export function Sidebar({ events }: Props) {
   const selectedTypes = useFilterStore((s) => s.selectedTypes);
   const searchQuery = useFilterStore((s) => s.searchQuery);
   const openModal = useModalStore((s) => s.open);
+  const setMobileOpen = useUIStore((s) => s.setMobileMenuOpen);
+
+  const handleSelectEvent = useCallback(
+    (event: CareerEvent) => {
+      setMobileOpen(false);
+      openModal(event);
+    },
+    [openModal, setMobileOpen],
+  );
 
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -32,13 +42,13 @@ export function Sidebar({ events }: Props) {
   }, [events, selectedCategories, selectedTypes, searchQuery]);
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] flex-col overflow-y-auto p-5">
+    <div className="flex h-full flex-col overflow-y-auto p-4 sm:p-5">
       <div className="space-y-6">
         <CategoryFilter />
         <div className="h-px bg-slate-100" />
         <TypeFilter />
         <div className="h-px bg-slate-100" />
-        <UpcomingEvents events={filtered} onSelectEvent={openModal} />
+        <UpcomingEvents events={filtered} onSelectEvent={handleSelectEvent} />
       </div>
     </div>
   );

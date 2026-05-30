@@ -23,6 +23,7 @@ body {
 body {
   background: var(--background);
   color: var(--foreground);
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* FullCalendar overrides — keep it light/minimal */
@@ -96,4 +97,65 @@ body {
 
 .fc-list-event:hover td {
   background: #eff6ff !important;
+}
+
+/* Mobile-friendly tweaks for FullCalendar */
+@media (max-width: 640px) {
+  .fc .fc-toolbar.fc-header-toolbar {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .fc .fc-toolbar-chunk {
+    display: flex;
+    align-items: center;
+  }
+
+  .fc .fc-toolbar-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+  }
+
+  .fc .fc-button {
+    padding: 0.25rem 0.55rem;
+    font-size: 0.72rem;
+    border-radius: 0.4rem;
+  }
+
+  .fc .fc-button .fc-icon {
+    font-size: 0.95rem;
+  }
+
+  .fc-event {
+    padding: 1px 4px;
+    font-size: 0.65rem;
+    border-radius: 0.25rem;
+  }
+
+  .fc-daygrid-day-number,
+  .fc-col-header-cell-cushion {
+    padding: 3px 4px;
+    font-size: 0.72rem;
+  }
+
+  .fc .fc-daygrid-day-bottom {
+    font-size: 0.65rem;
+    padding: 1px 4px;
+  }
+
+  .fc .fc-list-day-cushion {
+    padding: 0.5rem 0.75rem;
+  }
+
+  .fc .fc-list-event-time,
+  .fc .fc-list-event-title {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.78rem;
+  }
+
+  .fc-timegrid-slot-label-cushion,
+  .fc-timegrid-axis-cushion {
+    font-size: 0.65rem;
+  }
 }

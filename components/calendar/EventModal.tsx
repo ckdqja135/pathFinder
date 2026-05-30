@@ -44,13 +44,13 @@ export function EventModal() {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4 py-8 backdrop-blur-sm"
+      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-slate-900/40 px-0 sm:px-4 py-0 sm:py-8 backdrop-blur-sm"
       onClick={close}
       role="dialog"
       aria-modal="true"
     >
       <div
-        className="relative w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl"
+        className="relative w-full max-w-lg overflow-hidden rounded-t-2xl sm:rounded-2xl bg-white shadow-2xl max-h-[92dvh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div
@@ -62,12 +62,12 @@ export function EventModal() {
           type="button"
           onClick={close}
           aria-label="닫기"
-          className="absolute right-4 top-4 rounded-md p-1 text-slate-400 transition-colors duration-200 hover:bg-slate-100 hover:text-slate-700"
+          className="absolute right-3 top-3 sm:right-4 sm:top-4 rounded-md p-1.5 text-slate-400 transition-colors duration-200 hover:bg-slate-100 hover:text-slate-700"
         >
           <X className="h-5 w-5" />
         </button>
 
-        <div className="p-6">
+        <div className="p-4 sm:p-6">
           <div className="flex flex-wrap items-center gap-2">
             <span
               className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold"
@@ -100,7 +100,7 @@ export function EventModal() {
             )}
           </div>
 
-          <h2 className="mt-3 text-xl font-bold text-slate-900">
+          <h2 className="mt-3 pr-8 text-lg sm:text-xl font-bold text-slate-900 break-keep">
             {event.title}
           </h2>
 
@@ -139,12 +139,12 @@ export function EventModal() {
             {event.description}
           </p>
 
-          <div className="mt-5 flex items-center justify-between gap-2">
+          <div className="mt-5 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-2">
             <button
               type="button"
               onClick={() => toggleFavorite(event.id)}
               className={classNames(
-                "inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-all duration-200",
+                "inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2.5 text-sm font-medium transition-all duration-200",
                 isFav
                   ? "border-yellow-300 bg-yellow-50 text-yellow-700"
                   : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
@@ -162,7 +162,7 @@ export function EventModal() {
               href={event.link}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-blue-500 px-4 py-2 text-sm font-semibold text-white transition-all duration-200 hover:bg-blue-600"
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-blue-500/20 transition-all duration-200 hover:bg-blue-600 active:bg-blue-700"
             >
               신청 페이지로 <ExternalLink className="h-4 w-4" />
             </a>

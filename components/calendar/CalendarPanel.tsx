@@ -31,16 +31,18 @@ export function CalendarPanel({ events }: Props) {
   }, [events, selectedCategories, selectedTypes, searchQuery]);
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] flex-col p-5">
+    <div className="flex h-full flex-col p-3 sm:p-5">
       <div className="mb-3 flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-bold text-slate-900">진로 캘린더</h1>
-          <p className="text-xs text-slate-500">
+        <div className="min-w-0">
+          <h1 className="text-base sm:text-lg font-bold text-slate-900">
+            진로 캘린더
+          </h1>
+          <p className="text-[11px] sm:text-xs text-slate-500">
             현재 {filtered.length}개의 이벤트가 표시되고 있습니다.
           </p>
         </div>
       </div>
-      <div className="flex-1 min-h-0 overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex-1 min-h-0 overflow-hidden rounded-xl border border-slate-200 bg-white p-2 sm:p-4 shadow-sm">
         <CalendarView events={filtered} onSelectEvent={openModal} />
       </div>
       <EventModal />

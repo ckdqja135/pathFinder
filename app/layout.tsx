@@ -23,10 +23,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko" className={`${inter.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col bg-slate-50 text-slate-900">
+      <body className="h-full flex flex-col overflow-hidden bg-slate-50 text-slate-900">
         <QueryProvider>
           <Header />
-          <main className="flex-1 flex">{children}</main>
+          <main className="flex-1 min-h-0 flex">{children}</main>
         </QueryProvider>
       </body>
     </html>

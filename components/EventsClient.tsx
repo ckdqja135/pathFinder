@@ -18,9 +18,9 @@ export function EventsClient({ initialEvents }: Props) {
   });
 
   return (
-    <div className="relative flex w-full">
+    <div className="relative flex w-full h-full">
       <SidebarShell events={events} />
-      <section className="flex-1 min-w-0">
+      <section className="flex-1 min-w-0 h-full">
         <CalendarPanel events={events} />
       </section>
     </div>
