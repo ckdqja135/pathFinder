@@ -1,10 +1,16 @@
-import { mockEvents } from "@/data/mockEvents";
-import { isDbConfigured, prisma } from "@/lib/db";
+import { collectFromAllSources } from "@/lib/sources";
+import { getSourceById } from "@/lib/sources/registry";
+import type { CollectedEvent } from "@/lib/sources/types";
 import type {
   CareerEvent,
   Category as CategoryEnum,
+  EventsPayload,
   EventType as EventTypeEnum,
 } from "@/lib/types";
+
+// DB 없는 조회 경로: 페이지와 /api/events가 공유하는 데이터 계층.
+// 수집·캐시는 lib/sources(fetch Data Cache, 출처별 1시간)에서 처리하고,
+// 여기서는 도메인 모델 변환과 필터만 담당한다.
 
 interface QueryOptions {
   categories?: CategoryEnum[];
@@ -12,7 +18,28 @@ interface QueryOptions {
   query?: string;
 }
 
-function applyClientFilters(
+function toCareerEvent(item: CollectedEvent): CareerEvent {
+  return {
+    id: `${item.source}:${item.externalId}`,
+    title: item.title,
+    category: item.category,
+    type: item.type,
+    startDate: item.startDate,
+    endDate: item.endDate,
+    allDay: item.allDay,
+    registrationStart: item.registrationStart,
+    registrationEnd: item.registrationEnd,
+    organizer: item.organizer,
+    location: item.location,
+    isOnline: item.isOnline,
+    fee: item.fee,
+    link: item.link,
+    description: item.description,
+    sourceLabel: getSourceById(item.source)?.label,
+  };
+}
+
+function applyFilters(
   events: CareerEvent[],
   { categories, types, query }: QueryOptions,
 ): CareerEvent[] {
@@ -21,75 +48,31 @@ function applyClientFilters(
     if (categories?.length && !categories.includes(e.category)) return false;
     if (types?.length && !types.includes(e.type)) return false;
     if (q) {
-      const haystack = `${e.title} ${e.organizer} ${e.description}`.toLowerCase();
+      const haystack =
+        `${e.title} ${e.organizer} ${e.description}`.toLowerCase();
       if (!haystack.includes(q)) return false;
     }
     return true;
   });
 }
 
-function rowToCareerEvent(row: {
-  id: string;
-  title: string;
-  category: CategoryEnum;
-  type: EventTypeEnum;
-  startDate: Date;
-  endDate: Date;
-  registrationStart: Date | null;
-  registrationEnd: Date | null;
-  organizer: string;
-  location: string;
-  isOnline: boolean;
-  fee: number;
-  link: string;
-  description: string;
-}): CareerEvent {
-  return {
-    id: row.id,
-    title: row.title,
-    category: row.category,
-    type: row.type,
-    startDate: row.startDate.toISOString(),
-    endDate: row.endDate.toISOString(),
-    registrationStart: row.registrationStart?.toISOString(),
-    registrationEnd: row.registrationEnd?.toISOString(),
-    organizer: row.organizer,
-    location: row.location,
-    isOnline: row.isOnline,
-    fee: row.fee,
-    link: row.link,
-    description: row.description,
-  };
-}
-
-export async function getAllEvents(
+export async function getEventsPayload(
   opts: QueryOptions = {},
-): Promise<CareerEvent[]> {
-  if (!isDbConfigured) {
-    return applyClientFilters(mockEvents, opts);
-  }
-  try {
-    const rows = await prisma.event.findMany({
-      where: {
-        ...(opts.categories?.length
-          ? { category: { in: opts.categories } }
-          : {}),
-        ...(opts.types?.length ? { type: { in: opts.types } } : {}),
-        ...(opts.query
-          ? {
-              OR: [
-                { title: { contains: opts.query, mode: "insensitive" } },
-                { organizer: { contains: opts.query, mode: "insensitive" } },
-                { description: { contains: opts.query, mode: "insensitive" } },
-              ],
-            }
-          : {}),
-      },
-      orderBy: { startDate: "asc" },
-    });
-    return rows.map(rowToCareerEvent);
-  } catch (err) {
-    console.error("[events] DB query failed, falling back to mock:", err);
-    return applyClientFilters(mockEvents, opts);
-  }
+): Promise<EventsPayload> {
+  const { events, sources } = await collectFromAllSources();
+  const filtered = applyFilters(events.map(toCareerEvent), opts);
+
+  return {
+    events: filtered,
+    total: filtered.length,
+    // 오류 상세는 서버 로그에만 남기고 클라이언트에는 상태만 내려보낸다.
+    sources: sources.map(({ id, label, ok, count, fetchedAt }) => ({
+      id,
+      label,
+      ok,
+      count,
+      fetchedAt,
+    })),
+    generatedAt: new Date().toISOString(),
+  };
 }

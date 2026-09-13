@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAllEvents } from "@/lib/events-data";
+import { getEventsPayload } from "@/lib/events-data";
 import {
   ALL_CATEGORIES,
   ALL_TYPES,
@@ -7,6 +7,8 @@ import {
   type EventType,
 } from "@/lib/types";
 
+// 응답 자체는 매번 조립하되(필터가 쿼리스트링에 의존), 외부 수집은
+// lib/sources의 fetch Data Cache(출처별 1시간)를 공유한다.
 export const dynamic = "force-dynamic";
 
 function parseList<T extends string>(
@@ -25,7 +27,7 @@ function parseList<T extends string>(
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
 
-  const events = await getAllEvents({
+  const payload = await getEventsPayload({
     categories: parseList<Category>(
       searchParams.get("category"),
       ALL_CATEGORIES,
@@ -34,5 +36,5 @@ export async function GET(request: Request) {
     query: searchParams.get("q") ?? undefined,
   });
 
-  return NextResponse.json({ events, total: events.length });
+  return NextResponse.json(payload);
 }

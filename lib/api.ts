@@ -1,10 +1,9 @@
-import type { CareerEvent } from "./types";
+import type { EventsPayload } from "./types";
 
-export async function fetchEvents(): Promise<CareerEvent[]> {
+export async function fetchEventsPayload(): Promise<EventsPayload> {
   const res = await fetch("/api/events", { cache: "no-store" });
   if (!res.ok) throw new Error(`Failed to fetch events: ${res.status}`);
-  const json = (await res.json()) as { events: CareerEvent[] };
-  return json.events;
+  return (await res.json()) as EventsPayload;
 }
 
 export const eventsQueryKey = ["events"] as const;
