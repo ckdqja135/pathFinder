@@ -14,7 +14,8 @@ lib/sources/
 ├── scrapers/
 │   ├── devevent.ts      # brave-people/Dev-Event (GitHub raw 마크다운, IT)
 │   ├── gdg.ts           # GDG 챕터 페이지 (HTML, IT 커뮤니티)
-│   └── wevity.ts        # 위비티 공모전 (HTML 리스트+상세, 전 분야)
+│   ├── contestkorea.ts  # 콘테스트코리아 공모전 (HTML 리스트, 전 분야)
+│   └── wevity.ts        # 위비티 공모전 — 비활성 (아래 조사 기록 참고)
 └── util/
     ├── fetch.ts         # 캐시 적용 fetch + 동시성 제한
     ├── date.ts          # KST(+09:00) 명시적 날짜 처리
@@ -85,8 +86,14 @@ lib/sources/
 등록 기준: robots.txt가 일반 수집기를 허용 + 로그인 없이 접근 가능 +
 서버 렌더링(또는 raw 파일) + 실제 페이지와 대조해 파서 검증.
 
+등록 기준에는 **배포 환경(Vercel 서버리스, 데이터센터 IP)에서 실제로 응답할 것**도
+포함된다 — 위비티는 파서·robots 모두 문제없지만 Cloudflare가 데이터센터 IP를
+403 차단해(서울 icn1 리전에서도 재현) 비활성화하고 콘테스트코리아로 대체했다.
+함수 리전은 국내 출처 접근성을 위해 서울(icn1)로 고정되어 있다(`vercel.json`).
+
 2026-09 조사에서 제외한 출처와 사유는 `lib/sources/registry.ts` 주석 참고
-(onoffmix: robots 전면 차단, event-us/COEX: JS 렌더링, 10times: Cloudflare 차단,
+(wevity: Cloudflare의 데이터센터 IP 차단, onoffmix: robots 전면 차단,
+event-us/COEX: JS 렌더링, thinkcontest: AJAX 렌더링, 10times: Cloudflare 차단,
 work24: 세션 필요, KIISE: JSF 세션, festa: 서비스 종료).
 
 새 출처 추가: `lib/sources/scrapers/`에 `EventSource` 구현(파서는 순수 함수로
