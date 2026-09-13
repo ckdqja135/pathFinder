@@ -19,16 +19,41 @@ export interface CareerEvent {
   title: string;
   category: Category;
   type: EventType;
+  /** ISO 8601, 항상 +09:00(KST) 오프셋 포함 */
   startDate: string;
   endDate: string;
+  /** true면 원문에 시각이 없어 종일(시간 미정)로 취급 */
+  allDay?: boolean;
   registrationStart?: string;
   registrationEnd?: string;
   organizer: string;
+  /** 빈 문자열이면 장소 미정 */
   location: string;
   isOnline: boolean;
-  fee: number;
+  /** null = 가격 정보 없음(무료와 구분), 0 = 무료 */
+  fee: number | null;
   link: string;
   description: string;
+  /** 수집 출처 라벨(예: "위비티") — 사용자에게 출처 표기용 */
+  sourceLabel?: string;
+}
+
+/** 출처별 수집 상태 — API 응답에 포함되어 부분 실패 표시에 쓰인다. */
+export interface SourceStatus {
+  id: string;
+  label: string;
+  ok: boolean;
+  count: number;
+  /** 마지막 수집 성공 시각(ISO). 캐시에서 온 경우 캐시 생성 시각. */
+  fetchedAt?: string;
+}
+
+export interface EventsPayload {
+  events: CareerEvent[];
+  total: number;
+  sources: SourceStatus[];
+  /** 이 스냅샷을 조립한 시각(ISO) */
+  generatedAt: string;
 }
 
 export const CATEGORY_META: Record<
