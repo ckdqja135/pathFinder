@@ -37,8 +37,28 @@ export function CalendarView({ events, onSelectEvent }: Props) {
   const fcEvents = useMemo<EventInput[]>(() => {
     const items: EventInput[] = [];
 
+    // 시간 미정(allDay) 행사는 날짜 문자열만 넘겨 타임존 변환으로 날짜가
+    // 밀리는 일을 막는다. FullCalendar의 allDay end는 exclusive라 +1일.
+    const allDayRange = (event: CareerEvent) => {
+      const startDay = event.startDate.slice(0, 10);
+      const endDay = event.endDate.slice(0, 10);
+      if (startDay === endDay) {
+        return { start: startDay, end: undefined, allDay: true as const };
+      }
+      const exclusiveEnd = new Date(`${endDay}T00:00:00Z`);
+      exclusiveEnd.setUTCDate(exclusiveEnd.getUTCDate() + 1);
+      return {
+        start: startDay,
+        end: exclusiveEnd.toISOString().slice(0, 10),
+        allDay: true as const,
+      };
+    };
+
     for (const event of events) {
       const meta = CATEGORY_META[event.category];
+      const timing = event.allDay
+        ? allDayRange(event)
+        : { start: event.startDate, end: event.endDate, allDay: false as const };
 
       if (event.type === "CERTIFICATION") {
         // Show registration window in a soft tone, exam day in a strong tone.
@@ -58,8 +78,9 @@ export function CalendarView({ events, onSelectEvent }: Props) {
         items.push({
           id: `${event.id}-exam`,
           title: `${TYPE_META[event.type].emoji} ${event.title}`,
-          start: event.startDate,
-          end: event.endDate,
+          start: timing.start,
+          end: timing.end,
+          allDay: timing.allDay,
           backgroundColor: meta.color,
           borderColor: meta.color,
           textColor: "#ffffff",
@@ -69,8 +90,9 @@ export function CalendarView({ events, onSelectEvent }: Props) {
         items.push({
           id: event.id,
           title: `${TYPE_META[event.type].emoji} ${event.title}`,
-          start: event.startDate,
-          end: event.endDate,
+          start: timing.start,
+          end: timing.end,
+          allDay: timing.allDay,
           backgroundColor: meta.color,
           borderColor: meta.color,
           textColor: "#ffffff",

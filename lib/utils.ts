@@ -17,12 +17,20 @@ export function getDDay(targetISO: string, fromDate: Date = new Date()) {
   return `D+${Math.abs(diff)}`;
 }
 
-export function formatRange(startISO: string, endISO: string) {
+export function formatRange(
+  startISO: string,
+  endISO: string,
+  allDay = false,
+) {
   const start = parseISO(startISO);
   const end = parseISO(endISO);
   if (!isValid(start) || !isValid(end)) return "";
   const sameDay = format(start, "yyyy-MM-dd") === format(end, "yyyy-MM-dd");
   if (sameDay) {
+    if (allDay) {
+      // 원문에 시각 정보가 없는 행사 — 시각을 만들어 표시하지 않는다.
+      return `${format(start, "yyyy.MM.dd (EEE)", { locale: ko })} · 시간 미정`;
+    }
     return `${format(start, "yyyy.MM.dd (EEE)", { locale: ko })}  ${format(
       start,
       "HH:mm",
@@ -33,6 +41,12 @@ export function formatRange(startISO: string, endISO: string) {
     "yyyy.MM.dd",
     { locale: ko },
   )}`;
+}
+
+export function formatCollectedTime(iso: string) {
+  const d = parseISO(iso);
+  if (!isValid(d)) return "";
+  return format(d, "M월 d일 HH:mm", { locale: ko });
 }
 
 export function formatShortDate(iso: string) {
@@ -58,7 +72,8 @@ function startOfDay(d: Date) {
   return next;
 }
 
-export function formatFee(fee: number) {
+export function formatFee(fee: number | null) {
+  if (fee === null) return "가격 정보 없음";
   if (fee === 0) return "무료";
   return `${fee.toLocaleString("ko-KR")}원`;
 }

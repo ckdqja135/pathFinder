@@ -106,7 +106,16 @@ export function EventModal() {
 
           <div className="mt-4 space-y-3 text-sm text-slate-700">
             <Row icon={<Calendar className="h-4 w-4 text-slate-400" />}>
-              {formatRange(event.startDate, event.endDate)}
+              {/* 공모전은 개최일이 아니라 접수 마감일 기준으로 표시된다 */}
+              {event.type === "CONTEST" &&
+              event.registrationEnd === event.startDate ? (
+                <>
+                  <span className="text-slate-500">접수 마감 · </span>
+                  {formatRange(event.startDate, event.endDate, true)}
+                </>
+              ) : (
+                formatRange(event.startDate, event.endDate, event.allDay)
+              )}
             </Row>
             {event.registrationStart && event.registrationEnd && (
               <Row icon={<Calendar className="h-4 w-4 text-slate-400" />}>
@@ -115,20 +124,23 @@ export function EventModal() {
               </Row>
             )}
             <Row icon={<Building2 className="h-4 w-4 text-slate-400" />}>
-              {event.organizer}
+              {event.organizer || "주최자 정보 없음"}
             </Row>
             <Row icon={<MapPin className="h-4 w-4 text-slate-400" />}>
-              {event.location}
-              <span
-                className={classNames(
-                  "ml-2 inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold",
-                  event.isOnline
-                    ? "bg-emerald-50 text-emerald-700"
-                    : "bg-slate-100 text-slate-600",
-                )}
-              >
-                {event.isOnline ? "온라인" : "오프라인"}
-              </span>
+              {event.location ||
+                (event.isOnline ? "온라인" : "장소 미정 (원문 참조)")}
+              {(event.location || event.isOnline) && (
+                <span
+                  className={classNames(
+                    "ml-2 inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold",
+                    event.isOnline
+                      ? "bg-emerald-50 text-emerald-700"
+                      : "bg-slate-100 text-slate-600",
+                  )}
+                >
+                  {event.isOnline ? "온라인" : "오프라인"}
+                </span>
+              )}
             </Row>
             <Row icon={<Ticket className="h-4 w-4 text-slate-400" />}>
               {formatFee(event.fee)}
@@ -138,6 +150,12 @@ export function EventModal() {
           <p className="mt-4 rounded-lg bg-slate-50 p-3 text-sm leading-relaxed text-slate-600">
             {event.description}
           </p>
+
+          {event.sourceLabel && (
+            <p className="mt-2 text-[11px] text-slate-400">
+              출처: {event.sourceLabel}
+            </p>
+          )}
 
           <div className="mt-5 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-2">
             <button
