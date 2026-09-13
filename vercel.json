@@ -1,7 +1,7 @@
 {
   "crons": [
     {
-      "path": "/api/cron/sync-events",
+      "path": "/api/cron/refresh-events",
       "schedule": "0 21 * * *"
     }
   ]
