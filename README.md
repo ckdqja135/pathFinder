@@ -1,5 +1,7 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+행사 수집·캐시 구조(DB 없이 동작)는 [docs/event-collection.md](docs/event-collection.md)를 참고하세요.
+
 ## Getting Started
 
 First, run the development server:
