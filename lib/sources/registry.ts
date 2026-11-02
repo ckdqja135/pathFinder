@@ -2,6 +2,7 @@ import type { EventSource } from "./types";
 import { contestKoreaSource } from "./scrapers/contestkorea";
 import { devEventSource } from "./scrapers/devevent";
 import { gdgSource } from "./scrapers/gdg";
+import { kintexSource } from "./scrapers/kintex";
 
 // 활성 출처 목록. 새 출처는 scrapers/에 EventSource를 구현하고 여기에 추가한다.
 //
@@ -29,6 +30,7 @@ export const SOURCES: EventSource[] = [
   devEventSource,
   gdgSource,
   contestKoreaSource,
+  kintexSource,
 ];
 
 export function getSourceById(id: string): EventSource | undefined {

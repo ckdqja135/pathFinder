@@ -12,7 +12,8 @@ export type EventType =
   | "CONFERENCE"
   | "CERTIFICATION"
   | "JOB_FAIR"
-  | "CONTEST";
+  | "CONTEST"
+  | "EXHIBITION";
 
 export interface CareerEvent {
   id: string;
@@ -131,6 +132,7 @@ export const TYPE_META: Record<EventType, { label: string; emoji: string }> = {
   CERTIFICATION: { label: "자격증 시험", emoji: "📝" },
   JOB_FAIR: { label: "채용박람회", emoji: "💼" },
   CONTEST: { label: "공모전", emoji: "🏆" },
+  EXHIBITION: { label: "전시/박람회", emoji: "🏛️" },
 };
 
 export const ALL_CATEGORIES: Category[] = [
@@ -149,4 +151,5 @@ export const ALL_TYPES: EventType[] = [
   "CERTIFICATION",
   "JOB_FAIR",
   "CONTEST",
+  "EXHIBITION",
 ];

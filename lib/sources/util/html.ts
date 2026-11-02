@@ -9,10 +9,11 @@ const ENTITY_MAP: Record<string, string> = {
   "&apos;": "'",
   "&nbsp;": " ",
   "&#160;": " ",
+  "&middot;": "·",
 };
 
 export function decodeEntities(s: string): string {
-  let out = s.replace(/&(?:amp|lt|gt|quot|apos|nbsp|#39|#160);/g, (m) => ENTITY_MAP[m] ?? m);
+  let out = s.replace(/&(?:amp|lt|gt|quot|apos|nbsp|middot|#39|#160);/g, (m) => ENTITY_MAP[m] ?? m);
   out = out.replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)));
   out = out.replace(/&#x([0-9a-f]+);/gi, (_, code) =>
     String.fromCharCode(parseInt(code, 16)),
