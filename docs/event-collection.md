@@ -20,7 +20,9 @@ lib/sources/
     ├── fetch.ts         # 캐시 적용 fetch + 동시성 제한
     ├── date.ts          # KST(+09:00) 명시적 날짜 처리
     ├── html.ts          # 엔티티 디코딩/태그 제거
-    └── classify.ts      # 키워드 → 분야 분류
+    ├── classify.ts      # 키워드 → 분야 분류
+    ├── jsonld.ts        # 상세 페이지 schema.org Event JSON-LD → 개최 일시
+    └── robots.ts        # 실행 시점 robots.txt 확인 (임의 도메인 조회용)
 ```
 
 페이지(`app/page.tsx`)와 `/api/events`(`app/api/events/route.ts`)는 모두
@@ -63,8 +65,12 @@ lib/sources/
 
 - 출처별 시간 예산 20초(`SOURCE_BUDGET_MS`) — 초과 시 해당 출처만 실패 처리.
 - 요청(fetch)별 타임아웃 8–12초.
-- 동시 요청 제한: GDG 챕터 4개, 위비티 상세 3개 (`mapWithConcurrency`).
-- 순회 상한: 위비티 리스트 2페이지·상세 10건, GDG 챕터 8개.
+- 동시 요청 제한: GDG 챕터 4개, Dev-Event 상세 6개, 위비티 상세 3개 (`mapWithConcurrency`).
+- 순회 상한: 위비티 리스트 2페이지·상세 10건, GDG 챕터 8개, Dev-Event 상세 100건.
+- Dev-Event 상세 조회는 수집 시작 12초 후 새로 시작하지 않는다(요청 타임아웃 5초,
+  robots 확인 뒤에도 다시 검사) — 출처 예산 20초를 넘겨 README 결과까지 잃지 않도록.
+  상세 실패 시 README 정보로 폴백하고, 조회된 페이지는 캐시되므로 다음 요청에서
+  이어서 채워진다.
 - 한 출처의 실패는 다른 출처에 영향을 주지 않는다(`Promise.all` + 출처별 try/catch).
 - 응답 후 방치되는 자체 비동기 작업 없음 — 백그라운드 재검증은 Next/Vercel 런타임이 관리한다.
 
@@ -76,8 +82,17 @@ lib/sources/
 - `location: ""` = 장소 미정. 원문에 없는 장소를 넣지 않는다.
 - 공모전(위비티)은 개최일이 원문에 없으므로 **접수 마감일**을 캘린더 기준일로
   쓰고(`registrationEnd`와 동일 값), 모달에 "접수 마감"으로 표기한다.
-- Dev-Event는 "일시"가 명시된 항목만 수집한다. "접수"만 있는 항목은 개최일을
-  추정하지 않고 제외한다.
+- Dev-Event는 개최일이 확인된 항목만 수집하고, 접수 기간으로 개최일을 추정하지 않는다.
+  README 항목 대부분(2026-10 기준 90건 중 75건)이 "접수"만 적혀 있어, 링크된 행사
+  페이지의 schema.org Event JSON-LD에서 개최 일시를 읽는다.
+  - 조회 대상: "일시"가 없는 항목(도메인 무관, 공개 https만) + 이벤터스(`/{채널}/event/{id}`)·
+    티켓타코(`/event/{id}`) 항목. 두 플랫폼의 상세 값은 README "일시"보다 우선한다.
+  - 임의 도메인이므로 조회 전 robots.txt를 실행 시점에 확인한다(`util/robots.ts`,
+    RFC 9309). 원문은 `unstable_cache`로 하루 캐시 — 404 robots는 fetch Data Cache에
+    남지 않아 매 요청 재조회되기 때문. 4xx는 제한 없음, 5xx·네트워크 오류는 조회 안 함
+    (캐시하지 않아 다음 요청에서 재시도).
+  - 본문 텍스트에서 날짜를 고르지 않는다(접수·CFP 마감과 구분 불가). JSON-LD가 없는
+    자체 사이트(2026-11 기준 PyTorch Day Korea, FOSS for All 등)는 여전히 제외된다.
 - 분야 분류(`util/classify.ts`)의 영문 키워드는 단어 경계로만 매칭한다. 부분 문자열
   매칭이던 때 "SEO"가 "Seoul"에 걸려 `.NET Conf 2026 @Seoul` 등이 마케팅으로 분류됐다.
 - 출처 간 중복은 ① 정규화한 원문 URL ② 정규화한 제목+시작 날짜로만 판정하고
@@ -87,6 +102,8 @@ lib/sources/
 
 등록 기준: robots.txt가 일반 수집기를 허용 + 로그인 없이 접근 가능 +
 서버 렌더링(또는 raw 파일) + 실제 페이지와 대조해 파서 검증.
+(고정 출처의 robots는 등록 시 수동 확인한다. 출처가 링크로 가리키는 임의 도메인을
+조회할 때만 실행 시점 확인을 쓴다.)
 
 등록 기준에는 **배포 환경(Vercel 서버리스, 데이터센터 IP)에서 실제로 응답할 것**도
 포함된다 — 위비티는 파서·robots 모두 문제없지만 Cloudflare가 데이터센터 IP를

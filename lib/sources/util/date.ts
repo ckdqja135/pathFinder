@@ -36,6 +36,18 @@ export function kstIso(
   return `${year}-${pad2(month)}-${pad2(day)}T${pad2(hour)}:${pad2(minute)}:00+09:00`;
 }
 
+/** epoch ms를 KST 기준 +09:00 ISO 문자열로 (분 단위까지). */
+export function kstIsoFromMs(ms: number): string {
+  const shifted = new Date(ms + KST_OFFSET_MS);
+  return kstIso(
+    shifted.getUTCFullYear(),
+    shifted.getUTCMonth() + 1,
+    shifted.getUTCDate(),
+    shifted.getUTCHours(),
+    shifted.getUTCMinutes(),
+  );
+}
+
 /** KST 달력 날짜에 일수를 더한다 (월/년 넘어감 처리 포함). */
 export function addDaysKst(parts: KstParts, days: number): KstParts {
   const base = Date.UTC(parts.year, parts.month - 1, parts.day + days);

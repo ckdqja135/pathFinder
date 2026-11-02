@@ -8,6 +8,7 @@ import type {
   SourceRunResult,
 } from "./types";
 import { fetchDocCached } from "./util/fetch";
+import { robotsAllows } from "./util/robots";
 
 // 공통 수집 계층. 페이지/`/api/events`/cron이 모두 여기를 거친다.
 // - 출처별 실행은 병렬이며, 한 출처의 실패가 다른 출처에 영향을 주지 않는다.
@@ -38,7 +39,11 @@ function makeContext(sourceId: string): {
     return doc;
   };
   return {
-    ctx: { fetchDoc, now: new Date() },
+    ctx: {
+      fetchDoc,
+      robotsAllows: (url) => robotsAllows(url, sourceId),
+      now: new Date(),
+    },
     lastFetchedAt: () => latest,
   };
 }

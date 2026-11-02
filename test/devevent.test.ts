@@ -2,15 +2,20 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  detailLookupUrl,
+  detailLookupUrls,
+  devEventSource,
   parseDevEventMarkdown,
   parseScheduleRange,
   splitMonthSections,
 } from "@/lib/sources/scrapers/devevent";
+import type { CollectContext } from "@/lib/sources/types";
 
-const markdown = readFileSync(
-  join(__dirname, "fixtures", "devevent.md"),
-  "utf-8",
-);
+function fixture(name: string): string {
+  return readFileSync(join(__dirname, "fixtures", name), "utf-8");
+}
+
+const markdown = fixture("devevent.md");
 
 // 픽스처는 26년 09월 실제 항목들 + 합성 10월 섹션(연말 크로스 케이스)로 구성.
 const NOW = new Date("2026-09-01T00:00:00Z");
@@ -51,7 +56,7 @@ describe("parseScheduleRange", () => {
 describe("parseDevEventMarkdown (실제 README 스냅샷)", () => {
   const events = parseDevEventMarkdown(markdown, NOW);
 
-  it("일시가 명시된 항목만 수집한다 (접수만 있는 항목은 날짜 추정 금지)", () => {
+  it("상세 정보가 없으면 일시가 명시된 항목만 수집한다 (접수 기간으로 추정 금지)", () => {
     // 픽스처: 일시 4건 + 접수만 9건 → 4건만
     expect(events.length).toBe(4);
     expect(events.every((e) => e.startDate.length > 0)).toBe(true);
@@ -98,5 +103,178 @@ describe("parseDevEventMarkdown (실제 README 스냅샷)", () => {
   it("60일보다 오래 지난 행사는 제외한다", () => {
     const future = new Date("2027-06-01T00:00:00Z");
     expect(parseDevEventMarkdown(markdown, future).length).toBe(0);
+  });
+});
+
+describe("detailLookupUrl", () => {
+  it("이벤터스·티켓타코 행사 상세는 신뢰 플랫폼으로 보고 쿼리를 뗀다", () => {
+    expect(detailLookupUrl("https://event-us.kr/owasp/event/133675?utm_source=x")).toEqual({
+      url: "https://event-us.kr/owasp/event/133675",
+      trusted: true,
+    });
+    expect(detailLookupUrl("https://ticketa.co/event/zry4rrhh")?.trusted).toBe(true);
+  });
+
+  it("그 외 도메인은 쿼리를 유지하고 해시만 뗀다", () => {
+    expect(detailLookupUrl("https://luma.com/sa692amj")).toEqual({
+      url: "https://luma.com/sa692amj",
+      trusted: false,
+    });
+    expect(
+      detailLookupUrl("https://www.keit.re.kr/board.es?mid=a1&list_no=128385#top")?.url,
+    ).toBe("https://www.keit.re.kr/board.es?mid=a1&list_no=128385");
+    // 이벤터스라도 행사 상세 경로가 아니면 일반 도메인 취급 (robots가 판단)
+    expect(detailLookupUrl("https://event-us.kr/search?q=x")?.trusted).toBe(false);
+  });
+
+  it("https가 아니거나 내부 주소면 조회하지 않는다", () => {
+    expect(detailLookupUrl("http://example.com/event")).toBeNull();
+    expect(detailLookupUrl("https://127.0.0.1/admin")).toBeNull();
+    expect(detailLookupUrl("https://localhost/x")).toBeNull();
+    expect(detailLookupUrl("https://[::1]/x")).toBeNull();
+    expect(detailLookupUrl("not a url")).toBeNull();
+  });
+});
+
+describe("detailLookupUrls", () => {
+  it("일시가 없는 항목(도메인 무관)과 이벤터스·티켓타코 항목을 README 순서로 뽑는다", () => {
+    expect(detailLookupUrls(markdown, NOW)).toEqual([
+      "https://keystonellc.kr/sap/2026/0909_SAP_Connect_Day_for_Busan/0909_SAP_Connect_Day_for_Busan_eDM.html",
+      "https://event-us.kr/itsman/event/132376",
+      "https://event-us.kr/talkit/event/134235",
+      "https://event-us.kr/mdsit/event/131386",
+      "https://www.ai-world.kr/",
+      "https://ticketa.co/event/796zfanx",
+      "https://tech.channel.io/kr/articles/ai-product-frontiers-fba8c7be",
+      "https://event-us.kr/ConventionSOOP/event/132554",
+      "https://event-us.kr/2026bcmd/event/129785",
+    ]);
+  });
+
+  it("일시가 있는 항목은 신뢰 플랫폼일 때만 조회한다", () => {
+    const md = [
+      "## `26년 11월`",
+      "- __[루마 모임](https://luma.com/abc)__",
+      "  - 일시: 11. 03(화) 19:00 ~ 11. 03(화) 21:00",
+      "- __[티켓타코 행사](https://ticketa.co/event/xyz)__",
+      "  - 일시: 11. 04(수) 10:00 ~ 11. 04(수) 18:00",
+    ].join("\n");
+    expect(detailLookupUrls(md, NOW)).toEqual(["https://ticketa.co/event/xyz"]);
+  });
+
+  it("기준일이 지난 60일 밖이면 조회하지 않는다", () => {
+    expect(detailLookupUrls(markdown, new Date("2027-06-01T00:00:00Z"))).toEqual([]);
+  });
+});
+
+describe("상세 페이지 JSON-LD 보강", () => {
+  const OWASP_MD = [
+    "## `26년 11월`",
+    "- __[OWASP Korea Day](https://event-us.kr/owasp/event/133675)__",
+    "  - 분류: `오프라인(서울 강남구)`, `유료`, `세미나`, `기술일반`",
+    "  - 주최: OWASP Seoul Chapter",
+    "  - 접수: 09. 14(월) ~ 11. 27(금) 23:30",
+    "- __[.NET Conf 2026 @Seoul](https://ticketa.co/event/zry4rrhh)__",
+    "  - 분류: `오프라인(서울 종로구)`, `무료`, `세미나`, `기술일반`",
+    "  - 주최: Korea .NET User Group",
+    "  - 일시: 09. 10(목) 14:00 ~ 11. 26(목) 15:00",
+  ].join("\n");
+  const now = new Date("2026-10-29T00:00:00Z");
+
+  it("접수만 있는 항목도 상세 개최 일시가 있으면 수집하고, 접수 기간은 유지한다", () => {
+    const details = new Map([
+      [
+        "https://event-us.kr/owasp/event/133675",
+        {
+          startIso: "2026-11-28T10:00:00+09:00",
+          endIso: "2026-11-28T18:00:00+09:00",
+          allDay: false,
+        },
+      ],
+    ]);
+    const owasp = parseDevEventMarkdown(OWASP_MD, now, details).find(
+      (e) => e.title === "OWASP Korea Day",
+    )!;
+    expect(owasp.startDate).toBe("2026-11-28T10:00:00+09:00");
+    expect(owasp.endDate).toBe("2026-11-28T18:00:00+09:00");
+    expect(owasp.registrationEnd).toBe("2026-11-27T23:30:00+09:00");
+    expect(owasp.location).toBe("서울 강남구");
+  });
+
+  it("상세 일시가 README 일시보다 우선한다", () => {
+    const details = new Map([
+      [
+        "https://ticketa.co/event/zry4rrhh",
+        {
+          startIso: "2026-11-26T10:00:00+09:00",
+          endIso: "2026-11-26T18:00:00+09:00",
+          allDay: false,
+        },
+      ],
+    ]);
+    const events = parseDevEventMarkdown(OWASP_MD, now, details);
+    // OWASP는 상세 정보가 없고 README에 접수만 있으므로 제외
+    expect(events.map((e) => e.title)).toEqual([".NET Conf 2026 @Seoul"]);
+    expect(events[0].startDate).toBe("2026-11-26T10:00:00+09:00");
+    expect(events[0].endDate).toBe("2026-11-26T18:00:00+09:00");
+  });
+});
+
+describe("devEventSource.collect (고정 샘플 + 상세 페이지 발췌)", () => {
+  const pages: Record<string, string> = {
+    "https://raw.githubusercontent.com/brave-people/Dev-Event/master/README.md":
+      markdown,
+    "https://event-us.kr/itsman/event/132376": fixture("eventus-detail-online.html"),
+    "https://event-us.kr/2026bcmd/event/129785": fixture("eventus-detail-offline.html"),
+    "https://ticketa.co/event/796zfanx": fixture("ticketa-detail.html"),
+    // 합성: 자체 행사 사이트가 JSON-LD를 갖춘 경우
+    "https://www.ai-world.kr/": `<script type="application/ld+json">${JSON.stringify({
+      "@type": "Event",
+      startDate: "2026-09-10T09:00:00+09:00",
+      endDate: "2026-09-10T18:00:00+09:00",
+    })}</script>`,
+    // robots가 막는 페이지 — 조회되면 안 된다
+    "https://tech.channel.io/kr/articles/ai-product-frontiers-fba8c7be": `<script type="application/ld+json">${JSON.stringify({
+      "@type": "Event",
+      startDate: "2026-09-11T19:00:00+09:00",
+    })}</script>`,
+  };
+  const fetched: string[] = [];
+  const ctx: CollectContext = {
+    now: NOW,
+    // 나머지 상세 페이지는 조회 실패로 처리된다
+    fetchDoc: async (url) => {
+      fetched.push(url);
+      if (!(url in pages)) throw new Error(`HTTP 404 for ${url}`);
+      return { body: pages[url] };
+    },
+    robotsAllows: async (url) => !url.startsWith("https://tech.channel.io/"),
+  };
+
+  it("상세 조회에 성공한 접수-only 항목을 추가하고, 실패·robots 차단 항목은 제외한다", async () => {
+    const events = await devEventSource.collect(ctx);
+    // 일시 4건 + 상세 성공 4건(이벤터스 2·티켓타코 1·자체 사이트 1)
+    expect(events.length).toBe(8);
+    expect(events.find((e) => e.title === "AI WORLD 2026 : AI Shift – The New Economy")!.startDate).toBe(
+      "2026-09-10T09:00:00+09:00",
+    );
+    expect(fetched).not.toContain(
+      "https://tech.channel.io/kr/articles/ai-product-frontiers-fba8c7be",
+    );
+    expect(events.some((e) => e.title.startsWith("AI Product Frontiers"))).toBe(false);
+
+    const ghost = events.find((e) => e.link === "https://event-us.kr/itsman/event/132376")!;
+    expect(ghost.startDate).toBe("2026-09-09T14:00:00+09:00");
+    expect(ghost.endDate).toBe("2026-09-09T15:00:00+09:00");
+    expect(ghost.allDay).toBe(false);
+    expect(ghost.isOnline).toBe(true);
+    expect(ghost.registrationStart).toBe("2026-08-24T00:00:00+09:00");
+
+    const modernWork = events.find((e) => e.title === "Modern Work Conference Seoul 2026")!;
+    expect(modernWork.startDate).toBe("2026-09-17T09:00:00+09:00");
+
+    expect(events.some((e) => e.link === "https://event-us.kr/talkit/event/134235")).toBe(
+      false,
+    );
   });
 });

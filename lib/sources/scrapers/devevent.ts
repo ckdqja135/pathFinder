@@ -5,6 +5,8 @@ import type {
 } from "../types";
 import { classifyByText } from "../util/classify";
 import { kstIso } from "../util/date";
+import { mapWithConcurrency } from "../util/fetch";
+import { extractJsonLdSchedule } from "../util/jsonld";
 import type { EventType } from "@/lib/types";
 
 // brave-people/Dev-Event — 국내 개발자 행사(컨퍼런스/세미나/해커톤)를 커뮤니티가
@@ -16,12 +18,38 @@ import type { EventType } from "@/lib/types";
 //     - 주최: ...
 //     - 일시: 09. 09(수) 18:30 ~ 09. 09(수) 21:30   (또는 "접수: ...")
 //
-// 정확성 원칙: "일시"가 명시된 항목만 캘린더에 올린다. "접수"만 있는 항목은
-// 행사 개최일을 알 수 없으므로 날짜를 추정해 넣지 않고 제외한다.
+// 정확성 원칙: 개최일이 확인된 항목만 캘린더에 올린다. 접수 기간으로 개최일을
+// 추정하지 않는다.
+//
+// 상세 페이지 보강: README 항목 대부분이 "일시" 없이 "접수"만 적혀 있다
+// (2026-10 기준 90건 중 75건 — 대형 컨퍼런스 다수 포함). 이런 항목은 링크된 행사
+// 페이지의 schema.org Event JSON-LD(주최 측 입력값)에서 개최 일시를 읽는다.
+// - 조회 대상: "일시"가 없는 항목(도메인 무관) + 이벤터스·티켓타코 항목.
+//   두 플랫폼은 JSON-LD가 일관돼 README "일시"보다 우선한다 — 접수 기간을 일시로
+//   옮겨 적은 사례가 있다(.NET Conf: README 09.10~11.26, 상세 11.26 당일).
+// - 임의 도메인이므로 조회 전 robots.txt를 실행 시점에 확인한다(util/robots.ts).
+// - 본문 텍스트에서 날짜를 고르지는 않는다(접수·CFP 마감 등과 구분 불가 → 추정).
+// 상세 조회가 실패하면 "일시"가 있는 항목은 그 값을 쓰고, 없는 항목은 제외한다.
 
 const RAW_URL =
   "https://raw.githubusercontent.com/brave-people/Dev-Event/master/README.md";
 const HOMEPAGE = "https://github.com/brave-people/Dev-Event";
+
+const SIXTY_DAYS = 60 * 24 * 60 * 60 * 1000;
+const README_TIMEOUT_MS = 10_000;
+const MAX_DETAIL_LOOKUPS = 100;
+const DETAIL_CONCURRENCY = 6;
+const DETAIL_TIMEOUT_MS = 5_000;
+// 출처 시간 예산(index.ts, 20초)을 넘기면 README 결과까지 잃는다. 수집 시작 12초 후에는
+// 새 조회를 시작하지 않는다(robots 확인 뒤에도 다시 검사): 최악 12 + 5(상세 타임아웃) = 17초.
+// 조회한 페이지는 캐시되므로 다음 요청에서 이어서 채워진다.
+const DETAIL_PHASE_DEADLINE_MS = 12_000;
+
+// JSON-LD가 일관돼 README "일시"보다 우선하는 행사 플랫폼. 쿼리(utm 등)는 뗀다.
+const TRUSTED_DETAIL_PAGES: Array<{ host: RegExp; path: RegExp }> = [
+  { host: /^(www\.)?event-us\.kr$/i, path: /^\/[A-Za-z0-9_-]+\/event\/\d+\/?$/ },
+  { host: /^(www\.)?ticketa\.co$/i, path: /^\/event\/[A-Za-z0-9]+\/?$/ },
+];
 
 const MONTH_HEADER_RE = /^##\s+`(\d{2})년\s+(\d{2})월`\s*$/gm;
 // 제목에 대괄호가 들어가는 경우가 있어("[KISA] DNS 운영 …") 마지막 "](" 까지를 제목으로 본다.
@@ -184,19 +212,94 @@ function feeFromTags(tags: string[]): number | null {
   return null; // "유료" 포함 — 금액이 원문에 없으므로 미정으로 둔다
 }
 
+/** 커뮤니티 README에서 온 링크라 공개 https 도메인만 조회한다
+ *  (IP 리터럴·localhost 등 내부 주소로의 요청 방지). */
+function isPublicHttpsUrl(url: URL): boolean {
+  const host = url.hostname.toLowerCase();
+  return (
+    url.protocol === "https:" &&
+    host.includes(".") &&
+    !host.endsWith(".localhost") &&
+    !host.endsWith(".internal") &&
+    !host.startsWith("[") && // IPv6 리터럴
+    !/^\d+(\.\d+){3}$/.test(host) // IPv4 리터럴
+  );
+}
+
+function trustedDetailPage(url: URL): boolean {
+  return TRUSTED_DETAIL_PAGES.some(
+    (r) => r.host.test(url.hostname) && r.path.test(url.pathname),
+  );
+}
+
+/** 링크의 상세 조회용 URL. 조회할 수 없는 링크면 null.
+ *  trusted: README "일시"보다 상세 값을 우선하는 플랫폼인지 */
+export function detailLookupUrl(
+  link: string,
+): { url: string; trusted: boolean } | null {
+  let url: URL;
+  try {
+    url = new URL(link);
+  } catch {
+    return null;
+  }
+  if (!isPublicHttpsUrl(url)) return null;
+  if (trustedDetailPage(url)) {
+    return { url: `https://${url.hostname}${url.pathname}`, trusted: true };
+  }
+  url.hash = "";
+  return { url: url.toString(), trusted: false };
+}
+
+/** 상세 페이지를 조회할 URL 목록. "일시"가 없는 항목과 신뢰 플랫폼 항목이 대상이다.
+ *  기준일(일시 시작, 없으면 접수 마감)이 수집 창(지난 60일) 밖이면 조회하지 않는다.
+ *  상한을 넘으면 기준일이 지나지 않은 항목을 우선한다. */
+export function detailLookupUrls(markdown: string, now: Date): string[] {
+  const candidates: Array<{ url: string; upcoming: boolean }> = [];
+  const seen = new Set<string>();
+
+  for (const section of splitMonthSections(markdown)) {
+    for (const entry of parseEntries(section.body)) {
+      const lookup = detailLookupUrl(entry.link);
+      if (!lookup || seen.has(lookup.url)) continue;
+      if (entry.schedule && !lookup.trusted) continue; // 개최일이 이미 있음
+      const { url } = lookup;
+      const ref = entry.schedule
+        ? parseScheduleRange(entry.schedule, section.year)?.startIso
+        : entry.registration
+          ? parseScheduleRange(entry.registration, section.year)?.endIso
+          : undefined;
+      const refMs = ref ? Date.parse(ref) : NaN;
+      if (refMs < now.getTime() - SIXTY_DAYS) continue;
+      seen.add(url);
+      candidates.push({
+        url,
+        upcoming: !Number.isFinite(refMs) || refMs >= now.getTime(),
+      });
+    }
+  }
+  candidates.sort((a, b) => Number(b.upcoming) - Number(a.upcoming));
+  return candidates.slice(0, MAX_DETAIL_LOOKUPS).map((c) => c.url);
+}
+
+/** @param details 상세 조회 URL(detailLookupUrl) → 상세 페이지에서 읽은 개최 일시 */
 export function parseDevEventMarkdown(
   markdown: string,
   now: Date,
+  details: ReadonlyMap<string, ParsedSchedule> = new Map(),
 ): CollectedEvent[] {
-  const SIXTY_DAYS = 60 * 24 * 60 * 60 * 1000;
   const events: CollectedEvent[] = [];
   const seen = new Set<string>();
 
   for (const section of splitMonthSections(markdown)) {
     for (const entry of parseEntries(section.body)) {
-      if (!entry.schedule) continue; // 개최일이 명시된 항목만
-      const range = parseScheduleRange(entry.schedule, section.year);
-      if (!range) continue;
+      const lookup = detailLookupUrl(entry.link);
+      const range =
+        (lookup ? details.get(lookup.url) : undefined) ??
+        (entry.schedule
+          ? parseScheduleRange(entry.schedule, section.year)
+          : null);
+      if (!range) continue; // 개최일이 확인된 항목만
 
       const startMs = Date.parse(range.startIso);
       if (!Number.isFinite(startMs) || startMs < now.getTime() - SIXTY_DAYS) {
@@ -240,6 +343,42 @@ export function parseDevEventMarkdown(
   return events;
 }
 
+async function fetchDetailSchedules(
+  ctx: CollectContext,
+  urls: string[],
+  deadline: number,
+): Promise<Map<string, ParsedSchedule>> {
+  const results = await mapWithConcurrency(
+    urls,
+    DETAIL_CONCURRENCY,
+    async (url) => {
+      if (Date.now() > deadline) return null;
+      if (!(await ctx.robotsAllows(url))) return null;
+      if (Date.now() > deadline) return null; // robots 확인이 오래 걸린 경우
+      const { body } = await ctx.fetchDoc(url, {
+        timeoutMs: DETAIL_TIMEOUT_MS,
+      });
+      return extractJsonLdSchedule(body);
+    },
+  );
+
+  const schedules = new Map<string, ParsedSchedule>();
+  results.forEach((r, i) => {
+    if (r.value) schedules.set(urls[i], r.value);
+  });
+  // 개별 실패는 README 값으로 폴백하므로 출처 실패로 올리지 않되, 차단·마크업 변경을
+  // 알아챌 수 있게 로그는 남긴다.
+  const failed = results.filter((r) => r.error);
+  if (failed.length > 0) {
+    const first = failed[0].error;
+    console.warn(
+      `[events] devevent: detail lookup failed ${failed.length}/${urls.length}:`,
+      first instanceof Error ? first.message : String(first),
+    );
+  }
+  return schedules;
+}
+
 export const devEventSource: EventSource = {
   id: "devevent",
   label: "Dev Event (GitHub)",
@@ -247,11 +386,19 @@ export const devEventSource: EventSource = {
   method: "markdown",
   defaultCategory: "IT",
   async collect(ctx: CollectContext): Promise<CollectedEvent[]> {
-    const { body } = await ctx.fetchDoc(RAW_URL, { timeoutMs: 10_000 });
+    const deadline = Date.now() + DETAIL_PHASE_DEADLINE_MS;
+    const { body } = await ctx.fetchDoc(RAW_URL, {
+      timeoutMs: README_TIMEOUT_MS,
+    });
     if (splitMonthSections(body).length === 0) {
       // 월 섹션 헤더 자체가 없으면 형식 변경 — 빈 결과로 위장하지 않는다.
       throw new Error("devevent: no month sections found (format changed?)");
     }
-    return parseDevEventMarkdown(body, ctx.now);
+    const details = await fetchDetailSchedules(
+      ctx,
+      detailLookupUrls(body, ctx.now),
+      deadline,
+    );
+    return parseDevEventMarkdown(body, ctx.now, details);
   },
 };

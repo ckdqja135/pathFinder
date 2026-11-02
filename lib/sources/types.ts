@@ -38,6 +38,8 @@ export interface CollectContext {
     url: string,
     init?: { timeoutMs?: number; headers?: Record<string, string> },
   ) => Promise<FetchedDoc>;
+  /** 출처 목록 밖 임의 도메인을 조회하기 전 robots.txt 허용 여부 확인 */
+  robotsAllows: (url: string) => Promise<boolean>;
   now: Date;
 }
 

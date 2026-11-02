@@ -11,8 +11,10 @@
 
 import type { FetchedDoc } from "../types";
 
-const DEFAULT_UA =
-  "Mozilla/5.0 (compatible; PathFinderBot/0.1; +https://github.com/ckdqja135/pathfinder)";
+/** robots.txt의 User-agent와 대조하는 제품 토큰 */
+export const BOT_TOKEN = "PathFinderBot";
+
+export const DEFAULT_UA = `Mozilla/5.0 (compatible; ${BOT_TOKEN}/0.1; +https://github.com/ckdqja135/pathfinder)`;
 
 export const SOURCE_REVALIDATE_SECONDS = 3600; // 출처 캐시 기본 1시간
 

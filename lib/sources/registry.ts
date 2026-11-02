@@ -16,7 +16,9 @@ import { gdgSource } from "./scrapers/gdg";
 //                    데이터센터 IP 요청을 403 차단해 Vercel에서 항상 실패
 //                    (icn1 서울 리전에서도 재현 확인). 로컬에서만 동작하므로 비활성.
 // - onoffmix.com   → robots.txt가 허용 목록 외 봇 전면 차단(User-agent: * Disallow: /)
-// - event-us.kr    → 목록이 클라이언트 렌더링(JS)이라 HTML에 데이터 없음
+// - event-us.kr    → 목록이 클라이언트 렌더링(JS)이라 HTML에 데이터 없음.
+//                    목록 API는 비공개이고 robots가 /rss/event를 차단해 독립 출처로는 제외.
+//                    상세 페이지(JSON-LD)는 허용되어 Dev-Event 개최일 보강에만 쓴다.
 // - thinkcontest.com → 목록이 AJAX 렌더링이라 HTML에 데이터 없음
 // - coex.co.kr     → 전시 일정 페이지가 JS 렌더링
 // - kiise.or.kr    → JSF 세션 기반이라 직접 URL 접근 불가
