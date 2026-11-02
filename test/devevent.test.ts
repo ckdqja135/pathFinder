@@ -78,6 +78,23 @@ describe("parseDevEventMarkdown (실제 README 스냅샷)", () => {
     expect(online.location).toBe("");
   });
 
+  it("제목에 대괄호가 있어도 읽고, 하위 줄이 앞 항목을 덮어쓰지 않는다", () => {
+    const md = [
+      "## `26년 11월`",
+      "- __[앞 행사](https://example.com/a)__",
+      "  - 주최: 앞 주최",
+      "  - 일시: 11. 03(화) 10:00 ~ 11. 03(화) 12:00",
+      "- __[[KISA] DNS 운영 [고급] 실무](https://example.com/b)__",
+      "  - 주최: 한국인터넷진흥원",
+      "  - 일시: 11. 04(수) 09:30 ~ 11. 06(금) 17:30",
+    ].join("\n");
+    const events = parseDevEventMarkdown(md, NOW);
+    expect(events.map((e) => [e.title, e.organizer])).toEqual([
+      ["앞 행사", "앞 주최"],
+      ["[KISA] DNS 운영 [고급] 실무", "한국인터넷진흥원"],
+    ]);
+  });
+
   it("60일보다 오래 지난 행사는 제외한다", () => {
     const future = new Date("2027-06-01T00:00:00Z");
     expect(parseDevEventMarkdown(markdown, future).length).toBe(0);

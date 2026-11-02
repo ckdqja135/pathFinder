@@ -24,7 +24,8 @@ const RAW_URL =
 const HOMEPAGE = "https://github.com/brave-people/Dev-Event";
 
 const MONTH_HEADER_RE = /^##\s+`(\d{2})년\s+(\d{2})월`\s*$/gm;
-const ENTRY_TITLE_RE = /^-\s+__\[([^\]]+)\]\(([^)]+)\)__/;
+// 제목에 대괄호가 들어가는 경우가 있어("[KISA] DNS 운영 …") 마지막 "](" 까지를 제목으로 본다.
+const ENTRY_TITLE_RE = /^-\s+__\[(.+)\]\(([^)\s]+)\)__/;
 
 interface DevEventEntry {
   title: string;
@@ -70,10 +71,13 @@ function parseEntries(sectionBody: string): DevEventEntry[] {
 
   for (const rawLine of sectionBody.split("\n")) {
     const line = rawLine.trimEnd();
-    const titleM = ENTRY_TITLE_RE.exec(line.trim());
-    if (line.startsWith("- __") && titleM) {
-      current = { title: titleM[1].trim(), link: titleM[2].trim(), tags: [] };
-      entries.push(current);
+    if (line.startsWith("- __")) {
+      const titleM = ENTRY_TITLE_RE.exec(line.trim());
+      // 제목 줄을 못 읽으면 하위 줄이 앞 항목에 덮어써지지 않도록 끊는다.
+      current = titleM
+        ? { title: titleM[1].trim(), link: titleM[2].trim(), tags: [] }
+        : null;
+      if (current) entries.push(current);
       continue;
     }
     if (!current) continue;
