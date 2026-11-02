@@ -149,6 +149,7 @@ describe("kintexSource.collect", () => {
     const ctx: CollectContext = {
       now: NOW,
       robotsAllows: async () => true,
+      cached: (_key, compute) => compute(),
       fetchDoc: async (url) => {
         if (url.includes("/list.do")) return { body: listHtml };
         if (url in details) return { body: details[url] };
@@ -167,6 +168,7 @@ describe("kintexSource.collect", () => {
     const ctx: CollectContext = {
       now: NOW,
       robotsAllows: async () => true,
+      cached: (_key, compute) => compute(),
       fetchDoc: async () => ({ body: "<html><body>개편된 페이지</body></html>" }),
     };
     await expect(kintexSource.collect(ctx)).rejects.toThrow(/0 rows/);

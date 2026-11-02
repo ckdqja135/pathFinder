@@ -159,12 +159,14 @@ export const gdgSource: EventSource = {
     const results = await mapWithConcurrency(
       KOREAN_CHAPTERS,
       CHAPTER_CONCURRENCY,
-      async (slug) => {
-        const { body } = await ctx.fetchDoc(`${BASE}/${slug}/`, {
-          timeoutMs: CHAPTER_TIMEOUT_MS,
-        });
-        return parseGdgChapterPage(body, slug, ctx.now);
-      },
+      // 챕터 페이지는 1.4MB 안팎이라(2026-11 실측) 원문 대신 파싱한 카드만 캐시한다.
+      (slug) =>
+        ctx.cached(`chapter:${slug}`, async () => {
+          const { body } = await ctx.fetchDoc(`${BASE}/${slug}/`, {
+            timeoutMs: CHAPTER_TIMEOUT_MS,
+          });
+          return parseGdgChapterPage(body, slug, ctx.now);
+        }),
     );
 
     const fulfilled = results.filter((r) => r.value !== undefined);

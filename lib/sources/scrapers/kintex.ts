@@ -5,7 +5,7 @@ import type {
 } from "../types";
 import { classifyByText } from "../util/classify";
 import { addDaysKst, kstIso, kstParts, type KstParts } from "../util/date";
-import { mapWithConcurrency } from "../util/fetch";
+import { DeadlineExceeded, mapWithConcurrency } from "../util/fetch";
 import { clean } from "../util/html";
 import type { EventType } from "@/lib/types";
 
@@ -231,15 +231,20 @@ export const kintexSource: EventSource = {
     const details = await mapWithConcurrency(
       rows,
       DETAIL_CONCURRENCY,
-      async (row) => {
-        if (Date.now() > deadline) return undefined;
-        const { body } = await ctx.fetchDoc(kintexViewUrl(row.seq), {
-          timeoutMs: DETAIL_TIMEOUT_MS,
-        });
-        return parseKintexDetail(body);
-      },
+      // 상세 원문(~60KB) 대신 읽어낸 필드만 캐시한다. 캐시 히트는 마감 뒤에도 쓰고,
+      // 미스일 때만 마감을 보고 건너뛴다(throw라 캐시되지 않음).
+      (row) =>
+        ctx.cached(`detail:${row.seq}`, async () => {
+          if (Date.now() > deadline) throw new DeadlineExceeded();
+          const { body } = await ctx.fetchDoc(kintexViewUrl(row.seq), {
+            timeoutMs: DETAIL_TIMEOUT_MS,
+          });
+          return parseKintexDetail(body);
+        }),
     );
-    const failed = details.filter((d) => d.error);
+    const failed = details.filter(
+      (d) => d.error && !(d.error instanceof DeadlineExceeded),
+    );
     if (failed.length > 0) {
       const first = failed[0].error;
       console.warn(

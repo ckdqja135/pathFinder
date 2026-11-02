@@ -40,6 +40,10 @@ export interface CollectContext {
   ) => Promise<FetchedDoc>;
   /** 출처 목록 밖 임의 도메인을 조회하기 전 robots.txt 허용 여부 확인 */
   robotsAllows: (url: string) => Promise<boolean>;
+  /** 파생 결과 캐시(출처별 1시간). 상세 페이지처럼 원문은 크고 필요한 값은 작을 때,
+   *  원문 대신 compute 결과(JSON 직렬화 가능)만 저장한다. compute 안의 fetchDoc은
+   *  Data Cache에 남지 않는다. compute가 throw하면 캐시하지 않는다. */
+  cached: <T>(key: string, compute: () => Promise<T>) => Promise<T>;
   now: Date;
 }
 

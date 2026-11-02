@@ -117,28 +117,43 @@ async function fetchRobotsTxt(origin: string): Promise<string> {
   }
 }
 
-/** url을 수집해도 되는지 확인한다. robots.txt를 확인할 수 없으면 false. */
-export async function robotsAllows(
-  url: string,
+/** 출처 수집 1회에 쓸 robots 확인 함수. url을 수집해도 되는지 돌려주며, robots.txt를
+ *  확인할 수 없으면 false.
+ *  원문은 도메인별로 이 수집 안에서 한 번만 가져온다 — 상세 결과 캐시(ctx.cached) 안에서
+ *  호출되면 중첩 unstable_cache가 캐시를 건너뛰므로(Next 동작), 같은 도메인의 여러
+ *  URL이 robots.txt를 반복해 받지 않도록 수집 단위로 메모한다. */
+export function createRobotsChecker(
   sourceId: string,
-): Promise<boolean> {
-  let target: URL;
-  try {
-    target = new URL(url);
-  } catch {
-    return false;
-  }
-  try {
-    const robotsTxt = await unstable_cache(fetchRobotsTxt, ["robots-txt"], {
-      revalidate: ROBOTS_REVALIDATE_SECONDS,
-      tags: [sourceCacheTag(sourceId)],
-    })(target.origin);
-    return isAllowedByRobots(robotsTxt, `${target.pathname}${target.search}`);
-  } catch (err) {
-    console.warn(
-      `[events] ${sourceId}: robots.txt unavailable, skipping ${target.origin}:`,
-      err instanceof Error ? err.message : String(err),
-    );
-    return false;
-  }
+): (url: string) => Promise<boolean> {
+  const byOrigin = new Map<string, Promise<string>>();
+  return async (url) => {
+    let target: URL;
+    try {
+      target = new URL(url);
+    } catch {
+      return false;
+    }
+    let robotsTxt = byOrigin.get(target.origin);
+    if (!robotsTxt) {
+      robotsTxt = unstable_cache(fetchRobotsTxt, ["robots-txt"], {
+        revalidate: ROBOTS_REVALIDATE_SECONDS,
+        tags: [sourceCacheTag(sourceId)],
+      })(target.origin);
+      byOrigin.set(target.origin, robotsTxt);
+      // 실패는 메모하지 않는다 — 같은 수집의 다음 URL이 다시 시도할 수 있게.
+      robotsTxt.catch(() => byOrigin.delete(target.origin));
+    }
+    try {
+      return isAllowedByRobots(
+        await robotsTxt,
+        `${target.pathname}${target.search}`,
+      );
+    } catch (err) {
+      console.warn(
+        `[events] ${sourceId}: robots.txt unavailable, skipping ${target.origin}:`,
+        err instanceof Error ? err.message : String(err),
+      );
+      return false;
+    }
+  };
 }

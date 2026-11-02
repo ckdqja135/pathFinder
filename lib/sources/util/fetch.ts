@@ -77,6 +77,15 @@ function parseDateHeader(value: string | null): string | undefined {
   return Number.isFinite(ms) ? new Date(ms).toISOString() : undefined;
 }
 
+/** 출처 시간 예산 안의 마감을 넘겨 조회를 건너뛸 때 던진다. 결과 캐시(ctx.cached)
+ *  안에서 null을 돌려주면 "값 없음"이 캐시되므로, 던져서 캐시되지 않게 한다. */
+export class DeadlineExceeded extends Error {
+  constructor() {
+    super("detail lookup deadline exceeded");
+    this.name = "DeadlineExceeded";
+  }
+}
+
 /** 동시 실행 수를 제한한 map. 개별 실패는 { error }로 담아 반환한다. */
 export async function mapWithConcurrency<T, R>(
   items: readonly T[],

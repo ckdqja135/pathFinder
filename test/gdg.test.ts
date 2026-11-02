@@ -3,10 +3,12 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   chapterName,
+  gdgSource,
   parseGdgChapterPage,
   slugToTitle,
   splitGdgCards,
 } from "@/lib/sources/scrapers/gdg";
+import type { CollectContext } from "@/lib/sources/types";
 
 const html = readFileSync(
   join(__dirname, "fixtures", "gdg-chapter.html"),
@@ -61,5 +63,42 @@ describe("slug 변환", () => {
   it("챕터 슬러그에서 챕터명을 만든다", () => {
     expect(chapterName("gdg-seoul")).toBe("Seoul");
     expect(chapterName("gdg-campus-korea")).toBe("Campus Korea");
+  });
+});
+
+describe("gdgSource.collect", () => {
+  it("챕터 원문 대신 파싱한 카드만 ctx.cached에 저장한다", async () => {
+    const store = new Map<string, unknown>();
+    const fetched: string[] = [];
+    const ctx: CollectContext = {
+      // 픽스처의 2026-05-02 카드가 60일 창 안에 들도록
+      now: new Date("2026-05-10T00:00:00Z"),
+      fetchDoc: async (url) => {
+        fetched.push(url);
+        if (url !== "https://gdg.community.dev/gdg-seoul/") {
+          throw new Error(`HTTP 404 for ${url}`);
+        }
+        return { body: html };
+      },
+      robotsAllows: async () => true,
+      cached: async <T,>(key: string, compute: () => Promise<T>) => {
+        if (store.has(key)) return store.get(key) as T;
+        const value = await compute();
+        store.set(key, value);
+        return value;
+      },
+    };
+
+    const first = await gdgSource.collect(ctx);
+    expect(first.length).toBe(1);
+    // 캐시 값은 파싱 결과(행사 배열) — 1MB대 원문 HTML이 아니다
+    expect(store.get("chapter:gdg-seoul")).toEqual(first);
+    // 실패한 챕터는 캐시하지 않는다
+    expect(store.has("chapter:gdg-busan")).toBe(false);
+
+    fetched.length = 0;
+    await gdgSource.collect(ctx);
+    expect(fetched).not.toContain("https://gdg.community.dev/gdg-seoul/");
+    expect(fetched).toContain("https://gdg.community.dev/gdg-busan/");
   });
 });

@@ -297,17 +297,33 @@ describe("devEventSource.collect (고정 샘플 + 상세 페이지 발췌)", () 
       startDate: "2026-09-11T19:00:00+09:00",
     })}</script>`,
   };
-  const fetched: string[] = [];
-  const ctx: CollectContext = {
-    now: NOW,
-    // 나머지 상세 페이지는 조회 실패로 처리된다
-    fetchDoc: async (url) => {
-      fetched.push(url);
-      if (!(url in pages)) throw new Error(`HTTP 404 for ${url}`);
-      return { body: pages[url] };
-    },
-    robotsAllows: async (url) => !url.startsWith("https://tech.channel.io/"),
-  };
+  function makeCtx() {
+    const fetched: string[] = [];
+    const robotsChecked: string[] = [];
+    // ctx.cached의 계약: 성공한 결과만 저장, throw는 저장하지 않음
+    const store = new Map<string, unknown>();
+    const ctx: CollectContext = {
+      now: NOW,
+      // 나머지 상세 페이지는 조회 실패로 처리된다
+      fetchDoc: async (url) => {
+        fetched.push(url);
+        if (!(url in pages)) throw new Error(`HTTP 404 for ${url}`);
+        return { body: pages[url] };
+      },
+      robotsAllows: async (url) => {
+        robotsChecked.push(url);
+        return !url.startsWith("https://tech.channel.io/");
+      },
+      cached: async <T,>(key: string, compute: () => Promise<T>) => {
+        if (store.has(key)) return store.get(key) as T;
+        const value = await compute();
+        store.set(key, value);
+        return value;
+      },
+    };
+    return { ctx, fetched, robotsChecked, store };
+  }
+  const { ctx, fetched } = makeCtx();
 
   it("상세 조회에 성공한 접수-only 항목을 추가하고, 실패·robots 차단 항목은 제외한다", async () => {
     const events = await devEventSource.collect(ctx);
@@ -333,6 +349,32 @@ describe("devEventSource.collect (고정 샘플 + 상세 페이지 발췌)", () 
 
     expect(events.some((e) => e.link === "https://event-us.kr/talkit/event/134235")).toBe(
       false,
+    );
+  });
+
+  it("상세는 원문 대신 결과만 캐시해, 다음 수집에서는 실패한 조회만 다시 받는다", async () => {
+    const run = makeCtx();
+    const first = await devEventSource.collect(run.ctx);
+    // 캐시에는 일정(또는 null)만 — 원문 HTML이 들어가지 않는다
+    expect(run.store.get("detail:https://event-us.kr/itsman/event/132376")).toEqual({
+      startIso: "2026-09-09T14:00:00+09:00",
+      endIso: "2026-09-09T15:00:00+09:00",
+      allDay: false,
+    });
+    // robots 차단은 null로 캐시, 404 실패는 캐시하지 않음
+    expect(
+      run.store.get("detail:https://tech.channel.io/kr/articles/ai-product-frontiers-fba8c7be"),
+    ).toBeNull();
+    expect(run.store.has("detail:https://event-us.kr/talkit/event/134235")).toBe(false);
+
+    run.fetched.length = 0;
+    run.robotsChecked.length = 0;
+    const second = await devEventSource.collect(run.ctx);
+    expect(second.map((e) => e.externalId)).toEqual(first.map((e) => e.externalId));
+    expect(run.fetched).not.toContain("https://event-us.kr/itsman/event/132376");
+    expect(run.fetched).toContain("https://event-us.kr/talkit/event/134235");
+    expect(run.robotsChecked).not.toContain(
+      "https://tech.channel.io/kr/articles/ai-product-frontiers-fba8c7be",
     );
   });
 });

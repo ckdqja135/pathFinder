@@ -5,7 +5,7 @@ import type {
 } from "../types";
 import { classifyByText } from "../util/classify";
 import { kstIso } from "../util/date";
-import { mapWithConcurrency } from "../util/fetch";
+import { DeadlineExceeded, mapWithConcurrency } from "../util/fetch";
 import { extractJsonLdSchedule } from "../util/jsonld";
 import type { EventType } from "@/lib/types";
 
@@ -365,15 +365,19 @@ async function fetchDetailSchedules(
   const results = await mapWithConcurrency(
     urls,
     DETAIL_CONCURRENCY,
-    async (url) => {
-      if (Date.now() > deadline) return null;
-      if (!(await ctx.robotsAllows(url))) return null;
-      if (Date.now() > deadline) return null; // robots 확인이 오래 걸린 경우
-      const { body } = await ctx.fetchDoc(url, {
-        timeoutMs: DETAIL_TIMEOUT_MS,
-      });
-      return extractJsonLdSchedule(body);
-    },
+    // 원문 대신 읽어낸 일정(또는 null)만 캐시한다. robots 차단·JSON-LD 없음은 null로
+    // 캐시되고, 조회 실패·마감 초과는 throw라 캐시되지 않아 다음 요청에서 재시도된다.
+    // 캐시 히트는 마감 뒤에도 쓰고, 미스일 때만 마감을 본다.
+    (url) =>
+      ctx.cached(`detail:${url}`, async () => {
+        if (Date.now() > deadline) throw new DeadlineExceeded();
+        if (!(await ctx.robotsAllows(url))) return null;
+        if (Date.now() > deadline) throw new DeadlineExceeded(); // robots가 오래 걸린 경우
+        const { body } = await ctx.fetchDoc(url, {
+          timeoutMs: DETAIL_TIMEOUT_MS,
+        });
+        return extractJsonLdSchedule(body);
+      }),
   );
 
   const schedules = new Map<string, ParsedSchedule>();
@@ -381,8 +385,10 @@ async function fetchDetailSchedules(
     if (r.value) schedules.set(urls[i], r.value);
   });
   // 개별 실패는 README 값으로 폴백하므로 출처 실패로 올리지 않되, 차단·마크업 변경을
-  // 알아챌 수 있게 로그는 남긴다.
-  const failed = results.filter((r) => r.error);
+  // 알아챌 수 있게 로그는 남긴다. 마감 초과는 정상 동작이라 제외.
+  const failed = results.filter(
+    (r) => r.error && !(r.error instanceof DeadlineExceeded),
+  );
   if (failed.length > 0) {
     const first = failed[0].error;
     console.warn(
