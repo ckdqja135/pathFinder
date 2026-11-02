@@ -79,15 +79,29 @@ const RULES: Array<{ category: Category; keywords: string[] }> = [
   },
 ];
 
+// 영문 키워드는 단어 경계로만 매칭한다. 부분 문자열이면 "SEO"가 "Seoul", "AI"가
+// "chain", "ML"이 "html"에 걸린다(실측: ".NET Conf 2026 @Seoul"이 마케팅으로 분류됨).
+// 한글은 조사·복합어가 붙으므로("AI활용", "마케팅팀") 부분 문자열 매칭을 유지한다.
+function keywordMatcher(keyword: string): (haystack: string) => boolean {
+  const kw = keyword.toLowerCase();
+  if (!/^[\x20-\x7e]+$/.test(kw)) return (haystack) => haystack.includes(kw);
+  const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`(?<![a-z0-9])${escaped}(?![a-z0-9])`);
+  return (haystack) => re.test(haystack);
+}
+
+const MATCHERS = RULES.map((rule) => ({
+  category: rule.category,
+  matchers: rule.keywords.map(keywordMatcher),
+}));
+
 export function classifyByText(
   text: string,
   fallback: Category = "BUSINESS",
 ): Category {
   const haystack = text.toLowerCase();
-  for (const rule of RULES) {
-    for (const kw of rule.keywords) {
-      if (haystack.includes(kw.toLowerCase())) return rule.category;
-    }
+  for (const rule of MATCHERS) {
+    if (rule.matchers.some((match) => match(haystack))) return rule.category;
   }
   return fallback;
 }
