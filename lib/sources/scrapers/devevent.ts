@@ -19,7 +19,8 @@ import type { EventType } from "@/lib/types";
 //     - 일시: 09. 09(수) 18:30 ~ 09. 09(수) 21:30   (또는 "접수: ...")
 //
 // 정확성 원칙: 개최일이 확인된 항목만 캘린더에 올린다. 접수 기간으로 개최일을
-// 추정하지 않는다.
+// 추정하지 않는다. 예외로 `대회` 태그(공모전·해커톤)는 개최일이 없으면 접수 마감일에
+// "접수 마감"으로 올린다(콘테스트코리아와 같은 규칙).
 //
 // 상세 페이지 보강: README 항목 대부분이 "일시" 없이 "접수"만 적혀 있다
 // (2026-10 기준 90건 중 75건 — 대형 컨퍼런스 다수 포함). 이런 항목은 링크된 행사
@@ -294,12 +295,28 @@ export function parseDevEventMarkdown(
   for (const section of splitMonthSections(markdown)) {
     for (const entry of parseEntries(section.body)) {
       const lookup = detailLookupUrl(entry.link);
-      const range =
+      const type = eventTypeFromTags(entry.tags);
+      const registration = entry.registration
+        ? parseScheduleRange(entry.registration, section.year)
+        : null;
+      const held =
         (lookup ? details.get(lookup.url) : undefined) ??
         (entry.schedule
           ? parseScheduleRange(entry.schedule, section.year)
           : null);
-      if (!range) continue; // 개최일이 확인된 항목만
+      // 공모전·해커톤(`대회` 태그)은 개최일을 모르더라도 접수 마감이 핵심 일정이다.
+      // 콘테스트코리아와 같이 마감일을 캘린더 기준일로 쓴다(시작=종료=registrationEnd →
+      // 모달이 "접수 마감"으로 표기). 개최일을 만들어 넣는 것은 아니다.
+      const range: ParsedSchedule | null =
+        held ??
+        (type === "CONTEST" && registration
+          ? {
+              startIso: registration.endIso,
+              endIso: registration.endIso,
+              allDay: true,
+            }
+          : null);
+      if (!range) continue; // 개최일(또는 공모전 접수 마감)이 확인된 항목만
 
       const startMs = Date.parse(range.startIso);
       if (!Number.isFinite(startMs) || startMs < now.getTime() - SIXTY_DAYS) {
@@ -311,9 +328,6 @@ export function parseDevEventMarkdown(
       seen.add(externalId);
 
       const { location, isOnline } = locationFromTags(entry.tags);
-      const registration = entry.registration
-        ? parseScheduleRange(entry.registration, section.year)
-        : null;
       const paidNote = entry.tags.includes("유료") ? " (유료)" : "";
 
       events.push({
@@ -324,7 +338,7 @@ export function parseDevEventMarkdown(
           `${entry.title} ${entry.tags.join(" ")}`,
           "IT",
         ),
-        type: eventTypeFromTags(entry.tags),
+        type,
         startDate: range.startIso,
         endDate: range.endIso,
         allDay: range.allDay,

@@ -220,6 +220,64 @@ describe("상세 페이지 JSON-LD 보강", () => {
   });
 });
 
+describe("공모전·해커톤 접수 마감 기준 표시", () => {
+  // 2026-11-02 README 실제 항목 형식
+  const CONTEST_MD = [
+    "## `26년 11월`",
+    "- __[항만 문제해결을 위한 AI 기술 공모전](https://dacon.io/competitions/official/236771/overview/description)__",
+    "  - 분류: `온라인`, `무료`, `대회`, `AI`",
+    "  - 주최: 데이콘",
+    "  - 접수: 09. 30(수) ~ 11. 02(월) 10:00",
+    "- __[OBA.RUN 2nd 해커톤](https://luma.com/ahvyoors)__",
+    "  - 분류: `오프라인(서울 강남구)`, `무료`, `대회`, `AI`",
+    "  - 주최: OBA",
+    "  - 접수: 10. 30(금) ~ 11. 04(수)",
+    "- __[[SK텔레콤] FLY AI Challenger 10기 모집](https://www.skttechacademy.com/notice/15)__",
+    "  - 분류: `오프라인(서울)`, `무료`, `교육`, `AI`",
+    "  - 주최: SK텔레콤",
+    "  - 접수: 10. 14(수) ~ 11. 08(일)",
+    "- __[접수 기간 없는 대회](https://example.com/no-reg)__",
+    "  - 분류: `온라인`, `무료`, `대회`",
+  ].join("\n");
+  const now = new Date("2026-11-02T00:00:00Z");
+
+  it("개최일이 없는 `대회` 항목은 접수 마감일에 공모전으로 올린다", () => {
+    const dacon = parseDevEventMarkdown(CONTEST_MD, now).find((e) =>
+      e.title.startsWith("항만"),
+    )!;
+    expect(dacon.type).toBe("CONTEST");
+    expect(dacon.startDate).toBe("2026-11-02T10:00:00+09:00");
+    expect(dacon.endDate).toBe(dacon.startDate);
+    // 모달의 "접수 마감" 표기 조건(시작 = registrationEnd)
+    expect(dacon.registrationEnd).toBe(dacon.startDate);
+    expect(dacon.allDay).toBe(true);
+  });
+
+  it("상세 페이지에서 개최 일시를 찾으면 접수 마감 대신 그것을 쓴다", () => {
+    const details = new Map([
+      [
+        "https://luma.com/ahvyoors",
+        {
+          startIso: "2026-11-07T09:30:00+09:00",
+          endIso: "2026-11-07T21:00:00+09:00",
+          allDay: false,
+        },
+      ],
+    ]);
+    const oba = parseDevEventMarkdown(CONTEST_MD, now, details).find((e) =>
+      e.title.startsWith("OBA"),
+    )!;
+    expect(oba.startDate).toBe("2026-11-07T09:30:00+09:00");
+    expect(oba.registrationEnd).not.toBe(oba.startDate);
+  });
+
+  it("`대회`가 아닌 접수-only 항목과 접수 기간 없는 대회는 제외한다", () => {
+    const titles = parseDevEventMarkdown(CONTEST_MD, now).map((e) => e.title);
+    expect(titles).not.toContain("[SK텔레콤] FLY AI Challenger 10기 모집");
+    expect(titles).not.toContain("접수 기간 없는 대회");
+  });
+});
+
 describe("devEventSource.collect (고정 샘플 + 상세 페이지 발췌)", () => {
   const pages: Record<string, string> = {
     "https://raw.githubusercontent.com/brave-people/Dev-Event/master/README.md":
